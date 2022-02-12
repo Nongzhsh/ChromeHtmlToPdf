@@ -1,11 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.29905.134
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32127.271
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ChromeHtmlToPdfLib", "ChromeHtmlToPdfLib\ChromeHtmlToPdfLib.csproj", "{DA656B95-A59B-457A-BA26-2860160B76CB}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ChromeHtmlToPdfConsole", "ChromeHtmlToPdfConsole\ChromeHtmlToPdfConsole.csproj", "{0ECDC06A-D578-4F2C-A742-A5EFD5EA2C6F}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ChromeHtmlToPdfWebApi", "ChromeHtmlToPdfWebApi\ChromeHtmlToPdfWebApi.csproj", "{98882ED2-34C5-4501-8BAE-63606021AC7D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{0ECDC06A-D578-4F2C-A742-A5EFD5EA2C6F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0ECDC06A-D578-4F2C-A742-A5EFD5EA2C6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0ECDC06A-D578-4F2C-A742-A5EFD5EA2C6F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{98882ED2-34C5-4501-8BAE-63606021AC7D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{98882ED2-34C5-4501-8BAE-63606021AC7D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{98882ED2-34C5-4501-8BAE-63606021AC7D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{98882ED2-34C5-4501-8BAE-63606021AC7D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
