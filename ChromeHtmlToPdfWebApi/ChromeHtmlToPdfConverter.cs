@@ -48,8 +48,15 @@ namespace ChromeHtmlToPdfWebApi
                         }
 
                         //  rest style
-                        const string restCss = @" * {font-family: 'Microsoft YaHei';font-size: 100%;margin: 0;padding: 0;}";
                         var document = await BrowsingContext.New(Configuration.Default).OpenAsync(req => req.Content(html));
+
+                        var restCss = @" * {font-family: 'Microsoft YaHei';}";
+                        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                        {
+                            // On Linux Microsoft YaHei font line-height not like Windows 
+                            restCss = @" * {font-family: 'Microsoft YaHei';line-height:1.4em;}";
+                        }
+
                         var style = document.Head.QuerySelector<IHtmlStyleElement>("style");
                         if (style == null)
                         {

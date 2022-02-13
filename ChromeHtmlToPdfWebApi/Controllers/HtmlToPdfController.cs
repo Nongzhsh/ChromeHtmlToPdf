@@ -42,7 +42,7 @@ namespace ChromeHtmlToPdfWebApi.Controllers
         /// </summary>
         /// <param name="input"></param>
         /// <returns></returns>
-        [HttpPost("files")]
+        [HttpPost("file")]
         public async Task<FileResult> File(HtmlToPdfInput input)
         {
             var pdfBytes = await ChromeHtmlToPdfConverter.ToBytesAsync(input.IsUri, input.Html, input.PageSettings, _logger);
