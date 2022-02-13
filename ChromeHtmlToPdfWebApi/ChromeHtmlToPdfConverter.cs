@@ -54,7 +54,7 @@ namespace ChromeHtmlToPdfWebApi
                         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                         {
                             // On Linux Microsoft YaHei font line-height not like Windows 
-                            restCss = @" * {font-family: 'Microsoft YaHei';line-height:1.4em;}";
+                            restCss = @" * {font-family: 'Microsoft YaHei';line-height:1.3456789em;font-size: 100%;}";
                         }
 
                         var style = document.Head.QuerySelector<IHtmlStyleElement>("style");
