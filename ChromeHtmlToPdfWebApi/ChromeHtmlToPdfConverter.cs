@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using AngleSharp;
 using AngleSharp.Dom;
@@ -15,6 +16,7 @@ namespace ChromeHtmlToPdfWebApi
 {
     public static class ChromeHtmlToPdfConverter
     {
+        public static bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
         public static async Task<byte[]> ToBytesAsync(bool isUri, string html, PageSettings pageSettings = null, ILogger logger = null, params string[] chromeArguments)
         {
@@ -48,14 +50,25 @@ namespace ChromeHtmlToPdfWebApi
                         }
 
                         //  rest style
-                        var document = await BrowsingContext.New(Configuration.Default).OpenAsync(req => req.Content(html));
+                        var document = await BrowsingContext.New(AngleSharp.Configuration.Default).OpenAsync(req => req.Content(html));
 
-                        var restCss = @" * {font-family: 'Microsoft YaHei';}";
-                        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                        {
-                            // On Linux Microsoft YaHei font line-height not like Windows 
-                            restCss = @" * {font-family: 'Microsoft YaHei';line-height:1.3456789em;font-size: 100%;}";
-                        }
+                        var restCss = $@"
+* {{
+    text-size-adjust: 100%;
+    border: 0;
+}}
+
+html,
+body,
+table {{
+    box-sizing: border-box;
+    font-family: 'Microsoft YaHei';
+    margin: 0;
+    padding: 0;
+    {(IsWindows ? "" : "letter-spacing: -0.01em;")}
+    {(IsWindows ? "" : "line-height: 1.4;")}
+}}
+";
 
                         var style = document.Head.QuerySelector<IHtmlStyleElement>("style");
                         if (style == null)
@@ -71,7 +84,7 @@ namespace ChromeHtmlToPdfWebApi
 
                         var htmlContent = document.DocumentElement.OuterHtml;
 
-                        //TODO: Convert htmlContent has bug, failed to load img tag picture. So we write htmlContent into temp file, then convert by "ConvertUri"
+                        //TODO: Convert htmlContent has bug, failed to load img tag picture. So should write htmlContent into temp file, then convert by "ConvertUri"
                         //converter.ConvertToPdf(htmlContent, stream, pageSettings);
 
                         var tempHtmlFile = Path.Combine(converter.GetTempDirectory().FullName, $"{Guid.NewGuid()}.html");
@@ -100,9 +113,7 @@ namespace ChromeHtmlToPdfWebApi
                     return stream;
                 }
             }
-
         }
-
 
         public static Converter AddChromeArguments(this Converter converter, IEnumerable<string> arguments)
         {
@@ -139,6 +150,26 @@ namespace ChromeHtmlToPdfWebApi
                 converter.CurrentTempDirectory.Create();
 
             return converter.CurrentTempDirectory;
+        }
+
+        /// <summary>
+        /// 转换 pt -> px
+        /// </summary>
+        /// <param name="html"></param>
+        /// <param name="platform"></param>
+        /// <returns></returns>
+        public static string ConvertPtToPx(string html, OSPlatform? platform = null)
+        {
+            if (platform == null || RuntimeInformation.IsOSPlatform(platform.Value))
+            {
+                html = Regex.Replace(html, "([\\d]+)pt", delegate (Match match)
+                {
+                    var v = match.ToString().Replace("pt", "");
+                    return (int.Parse(v) * 96 / 72) + "px";
+                });
+            }
+
+            return html;
         }
     }
 }
