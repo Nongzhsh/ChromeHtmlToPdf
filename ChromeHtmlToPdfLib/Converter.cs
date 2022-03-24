@@ -780,8 +780,8 @@ namespace ChromeHtmlToPdfLib
         /// <param name="argument">The Chrome argument</param>
         public void AddChromeArgument(string argument)
         {
-            if (IsChromeRunning)
-                throw new ChromeException($"Chrome is already running, you need to set the argument '{argument}' before staring Chrome");
+            //if (IsChromeRunning)
+            //    throw new ChromeException($"Chrome is already running, you need to set the argument '{argument}' before staring Chrome");
 
             if (string.IsNullOrWhiteSpace(argument))
                 throw new ArgumentException("Argument is null, empty or white space");
@@ -805,8 +805,8 @@ namespace ChromeHtmlToPdfLib
         /// <param name="value">The argument value</param>
         public void AddChromeArgument(string argument, string value)
         {
-            if (IsChromeRunning)
-                throw new ChromeException($"Chrome is already running, you need to set the argument '{argument}' before staring Chrome");
+            //if (IsChromeRunning)
+            //    throw new ChromeException($"Chrome is already running, you need to set the argument '{argument}' before staring Chrome");
 
             if (string.IsNullOrWhiteSpace(argument))
                 throw new ArgumentException("Argument is null, empty or white space");
