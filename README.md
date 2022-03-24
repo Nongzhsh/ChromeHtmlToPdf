@@ -8,7 +8,7 @@ I needed a replacement for wkHtmlToPdf, a great tool but the activity on this pr
 
 ## License Information
 
-ChromeHtmlToPdf is Copyright (C)2017-2021 Kees van Spelde and is licensed under the MIT license:
+ChromeHtmlToPdf is Copyright (C)2017-2022 Kees van Spelde and is licensed under the MIT license:
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -109,6 +109,10 @@ google-chrome --version
 
 google-chrome --no-sandbox --user-data-dir
 ```
+
+### Running it from docker
+
+See this issue for more information --> https://github.com/Sicos1977/ChromeHtmlToPdf/issues/39
 
 Pre compiled binaries
 =====================

@@ -3,7 +3,7 @@
 //
 // Author: Kees van Spelde <sicos2002@hotmail.com>
 //
-// Copyright (c) 2017-2021 Magic-Sessions. (www.magic-sessions.com)
+// Copyright (c) 2017-2022 Magic-Sessions. (www.magic-sessions.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +37,7 @@ using System.Threading;
 using ChromeHtmlToPdfLib.Enums;
 using ChromeHtmlToPdfLib.Exceptions;
 using ChromeHtmlToPdfLib.Helpers;
+using ChromeHtmlToPdfLib.Protocol;
 using Ganss.XSS;
 using Microsoft.Extensions.Logging;
 
@@ -1150,8 +1151,7 @@ namespace ChromeHtmlToPdfLib
 
                             if (pageSettings.PaperFormat == PaperFormat.FitPageToContent)
                             {
-                                WriteToLog(
-                                    "The paper format 'FitPageToContent' is set, modifying html so that the PDF fits the HTML content");
+                                WriteToLog("The paper format 'FitPageToContent' is set, modifying html so that the PDF fits the HTML content");
                                 if (documentHelper.FitPageToContent(inputUri, out var outputUri))
                                 {
                                     inputUri = outputUri;
@@ -1193,12 +1193,9 @@ namespace ChromeHtmlToPdfLib
                 }
 
                 if (inputUri != null)
-                {
                     WriteToLog($"Loading {(inputUri.IsFile ? $"file {inputUri.OriginalString}" : $"url {inputUri}")}");
-                    _browser.NavigateTo(inputUri, safeUrls, _useCache, countdownTimer, mediaLoadTimeout, _urlBlacklist, LogNetworkTraffic);
-                }
-                else
-                    _browser.SetDocumentContent(html);
+
+                _browser.NavigateTo(safeUrls, _useCache, inputUri, html, countdownTimer, mediaLoadTimeout, _urlBlacklist, LogNetworkTraffic);
 
                 if (!string.IsNullOrWhiteSpace(waitForWindowStatus))
                 {
@@ -1405,8 +1402,7 @@ namespace ChromeHtmlToPdfLib
 
             using (var memoryStream = new MemoryStream())
             {
-                ConvertToPdf(inputUri, memoryStream, pageSettings, waitForWindowStatus,
-                    waitForWindowsStatusTimeout, conversionTimeout, mediaLoadTimeout, logger);
+                ConvertToPdf(inputUri, memoryStream, pageSettings, waitForWindowStatus, waitForWindowsStatusTimeout, conversionTimeout, mediaLoadTimeout, logger);
 
                 using (var fileStream = File.Open(outputFile, FileMode.Create))
                 {
@@ -1815,8 +1811,15 @@ namespace ChromeHtmlToPdfLib
 
             if (_browser != null)
             {
-                _browser.Close();
-                _browser.Dispose();
+                try
+                {
+                    _browser.Close();
+                    _browser.Dispose();
+                }
+                catch 
+                {
+                    // Ignore
+                }
             }
 
             if (!IsChromeRunning)

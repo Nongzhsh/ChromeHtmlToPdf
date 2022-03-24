@@ -3,7 +3,7 @@
 //
 // Author: Kees van Spelde <sicos2002@hotmail.com>
 //
-// Copyright (c) 2017-2021 Magic-Sessions. (www.magic-sessions.com)
+// Copyright (c) 2017-2022 Magic-Sessions. (www.magic-sessions.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -28,6 +28,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using ChromeHtmlToPdfLib.Exceptions;
+using ChromeHtmlToPdfLib.Helpers;
 using ChromeHtmlToPdfLib.Protocol;
 using Microsoft.Extensions.Logging;
 using SuperSocket.ClientEngine;
@@ -50,6 +51,11 @@ namespace ChromeHtmlToPdfLib
         /// Triggered when a new message is received on the <see cref="_webSocket"/>
         /// </summary>
         public event EventHandler<string> MessageReceived;
+
+        /// <summary>
+        /// Triggered when a <see cref="_webSocket"/> error occurs
+        /// </summary>
+        public event EventHandler<string> OnError;
         #endregion
 
         #region Fields
@@ -128,22 +134,24 @@ namespace ChromeHtmlToPdfLib
         {
             var response = e.Message;
 
-            CheckForError(response);
+            var error = CheckForError(response);
+            if (!string.IsNullOrEmpty(error))
+                OnError?.Invoke(this, error);
 
             var messageBase = MessageBase.FromJson(response);
 
             if (_messageId == messageBase.Id)
-                _response.SetResult(response);
+                _response?.SetResult(response);
 
             MessageReceived?.Invoke(this, response);
         }
 
         private void WebSocketOnError(object sender, ErrorEventArgs e)
         {
-            if (_response.Task.Status != TaskStatus.RanToCompletion)
-                _response.SetResult(string.Empty);
+            if (_response?.Task.Status != TaskStatus.RanToCompletion)
+                _response?.SetResult(string.Empty);
 
-            throw new ChromeException(e.Exception.Message);
+            OnError?.Invoke(this, ExceptionHelpers.GetInnerException(e.Exception));
         }
 
         private void WebSocketOnClosed(object sender, EventArgs e)
@@ -157,7 +165,7 @@ namespace ChromeHtmlToPdfLib
 
         #region SendAsync
         /// <summary>
-        /// Sends a message asynchronously to the <see cref="_webSocket"/>
+        ///     Sends a message asynchronously to the <see cref="_webSocket"/>
         /// </summary>
         /// <param name="message">The message to send</param>
         /// <returns></returns>
@@ -172,19 +180,37 @@ namespace ChromeHtmlToPdfLib
         }
         #endregion
 
+        #region Send
+        /// <summary>
+        ///     Sends a message to the <see cref="_webSocket"/>
+        /// </summary>
+        /// <param name="message">The message to send</param>
+        /// <returns></returns>
+        internal void Send(Message message)
+        {
+            _messageId += 1;
+            message.Id = _messageId;
+            _response = null;
+            OpenWebSocket();
+            _webSocket.Send(message.ToJson());            
+        }
+        #endregion
+
         #region CheckForError
         /// <summary>
         ///     Checks if <paramref name="message"/> contains an error and if so raises an exception
         /// </summary>
         /// <param name="message"></param>
-        private void CheckForError(string message)
+        private string CheckForError(string message)
         {
             var error = Error.FromJson(message);
 
             // ReSharper disable once CompareOfFloatsByEqualityOperator
             if (error.InnerError != null && error.InnerError.Code != 0 &&
                 !string.IsNullOrEmpty(error.InnerError.Message))
-                throw new ChromeException(error.InnerError.Message);
+                return error.InnerError.Message;
+
+            return null;
         }
         #endregion
 

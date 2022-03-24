@@ -3,7 +3,7 @@
 //
 // Author: Kees van Spelde <sicos2002@hotmail.com>
 //
-// Copyright (c) 2017-2021 Magic-Sessions. (www.magic-sessions.com)
+// Copyright (c) 2017-2022 Magic-Sessions. (www.magic-sessions.com)
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -104,7 +104,8 @@ namespace ChromeHtmlToPdfLib
 
             // Open a websocket to the browser
             _browserConnection = new Connection(browser.ToString(), logger);
-            
+            _browserConnection.OnError += OnOnError;
+
             var message = new Message {Method = "Target.createTarget"};
             message.Parameters.Add("url", "about:blank");
 
@@ -114,6 +115,14 @@ namespace ChromeHtmlToPdfLib
 
             // Open a websocket to the page
             _pageConnection = new Connection(pageUrl, logger);
+            _pageConnection.OnError += OnOnError;
+        }
+        #endregion
+
+        #region OnError
+        private void OnOnError(object sender, string error)
+        {
+            WriteToLog($"An error occurred: '{error}'");
         }
         #endregion
 
@@ -121,9 +130,10 @@ namespace ChromeHtmlToPdfLib
         /// <summary>
         ///     Instructs Chrome to navigate to the given <paramref name="uri" />
         /// </summary>
-        /// <param name="uri"></param>
-        /// <param name="useCache">When <c>true</c> then caching will be enabled</param>
         /// <param name="safeUrls">A list with URL's that are safe to load</param>
+        /// <param name="useCache">When <c>true</c> then caching will be enabled</param>
+        /// <param name="uri"></param>
+        /// <param name="html"></param>
         /// <param name="countdownTimer">If a <see cref="CountdownTimer"/> is set then
         ///     the method will raise an <see cref="ConversionTimedOutException"/> if the 
         ///     <see cref="CountdownTimer"/> reaches zero before finishing navigation</param>
@@ -135,9 +145,10 @@ namespace ChromeHtmlToPdfLib
         /// <exception cref="ChromeException">Raised when an error is returned by Chrome</exception>
         /// <exception cref="ConversionTimedOutException">Raised when <paramref name="countdownTimer"/> reaches zero</exception>
         internal void NavigateTo(
-            Uri uri,
             List<string> safeUrls,
             bool useCache,
+            Uri uri = null,
+            string html = null,
             CountdownTimer countdownTimer = null,
             int? mediaLoadTimeout = null,
             List<string> urlBlacklist = null,
@@ -148,7 +159,7 @@ namespace ChromeHtmlToPdfLib
             var navigationError = string.Empty;
             var waitForNetworkIdle = false;
             var mediaTimeoutTaskSet = false;
-            var absoluteUri = uri.AbsoluteUri.Substring(0, uri.AbsoluteUri.LastIndexOf('/') + 1);
+            var absoluteUri = uri?.AbsoluteUri.Substring(0, uri.AbsoluteUri.LastIndexOf('/') + 1);
 
             #region Message handler
             var messageHandler = new EventHandler<string>(delegate(object sender, string data)
@@ -207,7 +218,8 @@ namespace ChromeHtmlToPdfLib
                         var requestId = fetch.Params.RequestId;
                         var url = fetch.Params.Request.Url;
                         var isSafeUrl = safeUrls.Contains(url);
-                        var isAbsoluteFileUri = url.StartsWith("file://", StringComparison.InvariantCultureIgnoreCase) &&
+                        var isAbsoluteFileUri = absoluteUri != null &&
+                                                url.StartsWith("file://", StringComparison.InvariantCultureIgnoreCase) &&
                                                 url.StartsWith(absoluteUri, StringComparison.InvariantCultureIgnoreCase);
 
                         if (!RegularExpression.IsRegExMatch(urlBlacklist, url, out var matchedPattern) || isAbsoluteFileUri || isSafeUrl)
@@ -221,7 +233,7 @@ namespace ChromeHtmlToPdfLib
 
                             var fetchContinue = new Message {Method = "Fetch.continueRequest"};
                             fetchContinue.Parameters.Add("requestId", requestId);
-                            _pageConnection.SendAsync(fetchContinue).GetAwaiter();
+                            _pageConnection.Send(fetchContinue);
                         }
                         else
                         {
@@ -234,7 +246,7 @@ namespace ChromeHtmlToPdfLib
                             // ConnectionAborted, ConnectionFailed, NameNotResolved, InternetDisconnected, AddressUnreachable,
                             // BlockedByClient, BlockedByResponse
                             fetchFail.Parameters.Add("errorReason", "BlockedByClient");
-                            _pageConnection.SendAsync(fetchFail).GetAwaiter();
+                            _pageConnection.Send(fetchFail);
                         }
 
                         break;
@@ -304,9 +316,6 @@ namespace ChromeHtmlToPdfLib
             });
             #endregion
 
-            _pageConnection.MessageReceived += messageHandler;
-            _pageConnection.Closed += (sender, args) => waitEvent?.Set();
-
             if (logNetworkTraffic)
             {
                 WriteToLog("Enabling network traffic logging");
@@ -324,20 +333,46 @@ namespace ChromeHtmlToPdfLib
             if (urlBlacklist?.Count > 0)
             {
                 WriteToLog("Enabling Fetch to block url's that are in the url blacklist'");
-                _pageConnection.SendAsync(new Message {Method = "Fetch.enable"}).GetAwaiter();
+                _pageConnection.SendAsync(new Message {Method = "Fetch.enable"}).GetAwaiter().GetResult();
             }
 
             // Enables page domain notifications
-            _pageConnection.SendAsync(new Message {Method = "Page.enable"}).GetAwaiter();
+            _pageConnection.SendAsync(new Message {Method = "Page.enable"}).GetAwaiter().GetResult();
 
             var lifecycleEventEnabledMessage = new Message {Method = "Page.setLifecycleEventsEnabled"};
             lifecycleEventEnabledMessage.AddParameter("enabled", true);
-            _pageConnection.SendAsync(lifecycleEventEnabledMessage).GetAwaiter();
+            _pageConnection.SendAsync(lifecycleEventEnabledMessage).GetAwaiter().GetResult();
 
-            // Navigates current page to the given URL
-            var pageNavigateMessage = new Message {Method = "Page.navigate"};
-            pageNavigateMessage.AddParameter("url", uri.ToString());
-            _pageConnection.SendAsync(pageNavigateMessage).GetAwaiter();
+            _pageConnection.MessageReceived += messageHandler;
+            _pageConnection.Closed += (sender, args) => waitEvent?.Set();
+
+            if (uri != null)
+            {
+                // Navigates current page to the given URL
+                var pageNavigateMessage = new Message { Method = "Page.navigate" };
+                pageNavigateMessage.AddParameter("url", uri.ToString());
+                _pageConnection.Send(pageNavigateMessage);
+            }
+            else if (!string.IsNullOrWhiteSpace(html))
+            {
+                WriteToLog("Getting page frame tree");
+                var pageGetFrameTree = new Message { Method = "Page.getFrameTree" };
+                var frameTree = _pageConnection.SendAsync(pageGetFrameTree).GetAwaiter().GetResult();
+                var frameResult = Protocol.Page.FrameTree.FromJson(frameTree);
+
+                WriteToLog("Setting document content");
+
+                var pageSetDocumentContent = new Message { Method = "Page.setDocumentContent" };
+                pageSetDocumentContent.AddParameter("frameId", frameResult.Result.FrameTree.Frame.Id);
+                pageSetDocumentContent.AddParameter("html", html);
+                _pageConnection.SendAsync(pageSetDocumentContent).GetAwaiter().GetResult();
+                // When using setDocumentContent a Page.frameNavigated event is never fired so we have to set the waitForNetworkIdle to true our self
+                waitForNetworkIdle = true;
+
+                WriteToLog("Document content set");
+            }
+            else
+                throw new ArgumentException("Uri and html are both null");
 
             if (countdownTimer != null)
             {
@@ -358,14 +393,14 @@ namespace ChromeHtmlToPdfLib
             lifecycleEventDisabledMessage.AddParameter("enabled", false);
 
             // Disables page domain notifications
-            _pageConnection.SendAsync(lifecycleEventDisabledMessage).GetAwaiter();
-            _pageConnection.SendAsync(new Message {Method = "Page.disable"}).GetAwaiter();
+            _pageConnection.SendAsync(lifecycleEventDisabledMessage).GetAwaiter().GetResult();
+            _pageConnection.SendAsync(new Message {Method = "Page.disable"}).GetAwaiter().GetResult();
 
             // Disables the fetch domain
             if (urlBlacklist?.Count > 0)
             {
                 WriteToLog("Disabling Fetch");
-                _pageConnection.SendAsync(new Message {Method = "Fetch.disable"}).GetAwaiter();
+                _pageConnection.SendAsync(new Message {Method = "Fetch.disable"}).GetAwaiter().GetResult();
             }
 
             if (logNetworkTraffic)
@@ -385,29 +420,6 @@ namespace ChromeHtmlToPdfLib
                 WriteToLog(navigationError);
                 throw new ChromeNavigationException(navigationError);
             }
-        }
-        #endregion
-
-        #region SetPageContent
-        /// <summary>
-        /// Sets given markup as the document's HTML
-        /// </summary>
-        /// <param name="html">HTML content to set</param>
-        internal void SetDocumentContent(string html)
-        {
-            WriteToLog("Getting page frame tree");
-            var pageGetFrameTree = new Message {Method = "Page.getFrameTree"};
-            var frameTree = _pageConnection.SendAsync(pageGetFrameTree).GetAwaiter().GetResult();
-            var frameResult = Protocol.Page.FrameTree.FromJson(frameTree);
-
-            WriteToLog("Setting document content");
-            
-            var pageSetDocumentContent = new Message {Method = "Page.setDocumentContent"};
-            pageSetDocumentContent.AddParameter("frameId", frameResult.Result.FrameTree.Frame.Id);
-            pageSetDocumentContent.AddParameter("html", html);
-            _pageConnection.SendAsync(pageSetDocumentContent).GetAwaiter();
-
-            WriteToLog("Document content set");
         }
         #endregion
 
@@ -444,7 +456,7 @@ namespace ChromeHtmlToPdfLib
 
             while (!match)
             {
-                _pageConnection.SendAsync(message).GetAwaiter();
+                _pageConnection.Send(message);
                 waitEvent.WaitOne(10);
                 if (stopWatch.ElapsedMilliseconds >= timeout) break;
             }
@@ -470,18 +482,11 @@ namespace ChromeHtmlToPdfLib
             message.AddParameter("returnByValue", false);
 
             var errorDescription = string.Empty;
+            var result = _pageConnection.SendAsync(message).GetAwaiter().GetResult();
+            var evaluateError = EvaluateError.FromJson(result);
 
-            void MessageReceived(object sender, string data)
-            {
-                var evaluateError = EvaluateError.FromJson(data);
-
-                if (evaluateError.Result?.ExceptionDetails != null)
-                    errorDescription = evaluateError.Result.ExceptionDetails.Exception.Description;
-            }
-
-            _pageConnection.MessageReceived += MessageReceived;
-            _pageConnection.SendAsync(message).GetAwaiter().GetResult();
-            _pageConnection.MessageReceived -= MessageReceived;
+            if (evaluateError.Result?.ExceptionDetails != null)
+                errorDescription = evaluateError.Result.ExceptionDetails.Exception.Description;
 
             if (!string.IsNullOrEmpty(errorDescription))
                 throw new ChromeException(errorDescription);
@@ -586,18 +591,11 @@ namespace ChromeHtmlToPdfLib
         /// <summary>
         ///     Instructs Chrome to close
         /// </summary>
-        /// <param name="countdownTimer">If a <see cref="CountdownTimer"/> is set then
-        /// the method will raise an <see cref="ConversionTimedOutException"/> in the 
-        /// <see cref="CountdownTimer"/> reaches zero before Chrome responses that it is going to close</param>    
         /// <exception cref="ChromeException">Raised when an error is returned by Chrome</exception>
-        public void Close(CountdownTimer countdownTimer = null)
+        public void Close()
         {
             var message = new Message {Method = "Browser.close"};
-
-            if (countdownTimer != null)
-                _browserConnection.SendAsync(message).Timeout(countdownTimer.MillisecondsLeft).GetAwaiter();
-            else
-                _browserConnection.SendAsync(message).GetAwaiter();
+            _browserConnection.SendAsync(message).GetAwaiter().GetResult();
         }
         #endregion
 
@@ -630,7 +628,10 @@ namespace ChromeHtmlToPdfLib
         /// </summary>
         public void Dispose()
         {
+            _pageConnection.OnError -= OnOnError;
             _pageConnection?.Dispose();
+
+            _browserConnection.OnError -= OnOnError;
             _browserConnection?.Dispose();
         }
         #endregion
