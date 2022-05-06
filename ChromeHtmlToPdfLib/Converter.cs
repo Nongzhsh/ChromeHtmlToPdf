@@ -37,7 +37,6 @@ using System.Threading;
 using ChromeHtmlToPdfLib.Enums;
 using ChromeHtmlToPdfLib.Exceptions;
 using ChromeHtmlToPdfLib.Helpers;
-using ChromeHtmlToPdfLib.Protocol;
 using Ganss.XSS;
 using Microsoft.Extensions.Logging;
 
@@ -1076,6 +1075,33 @@ namespace ChromeHtmlToPdfLib
         }
         #endregion
 
+        #region GetUrlFromFile
+        private bool GetUrlFromFile(string fileName, out string url)
+        {
+            try
+            {
+                var lines = File.ReadAllLines(fileName);
+
+                foreach (var line in lines)
+                {
+                    var temp = line.ToLowerInvariant();
+                    if (temp.StartsWith("url="))
+                    {
+                        url = line.Substring(4);
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore
+            }
+
+            url = null;
+            return false;
+        }
+        #endregion
+
         #region Convert
         private void Convert(
             OutputFormat outputFormat,
@@ -1113,6 +1139,14 @@ namespace ChromeHtmlToPdfLib
                     case ".svg":
                     case ".xml":
                         // This is ok
+                        break;
+
+                    case ".url":
+                        if (GetUrlFromFile(inputUri.AbsolutePath, out var url))
+                        {
+                            WriteToLog($"Read url '{url}' from URL file '{inputUri.AbsolutePath}'");
+                            inputUri = new ConvertUri(url);
+                        }
                         break;
 
                     default:
@@ -1767,7 +1801,11 @@ namespace ChromeHtmlToPdfLib
             try
             {
                 var process = Process.GetProcessById(processId);
+#if (NETSTANDARD2_0)
                 process.Kill();
+#else
+                process.Kill(true);
+#endif
             }
             catch (Exception exception)
             {
@@ -1806,36 +1844,52 @@ namespace ChromeHtmlToPdfLib
         /// </summary>
         public void Dispose()
         {
-            if (_disposed) return;
-            _disposed = true;
+            if (_disposed) 
+                return;
+
+            _chromeWaitEvent?.Dispose();
+            _chromeWaitEvent = null;
 
             if (_browser != null)
             {
                 try
                 {
+                    WriteToLog("Closing Chrome browser gracefully");
                     _browser.Close();
                     _browser.Dispose();
                 }
-                catch 
+                catch (Exception exception)
                 {
-                    // Ignore
+                    WriteToLog($"An error occurred while trying to close Chrome gracefully, error '{ExceptionHelpers.GetInnerException(exception)}'");
                 }
             }
 
-            if (!IsChromeRunning)
+            var counter = 0;
+
+            // Give Chrome 2 seconds to close
+            while (counter < 200)
             {
-                _chromeProcess = null;
-                return;
+                if (!IsChromeRunning)
+                {
+                    WriteToLog("Chrome closed gracefully");
+                    break;
+                }
+
+                counter++;
+                Thread.Sleep(10);
             }
 
-            // Sometimes Chrome does not close all processes so kill them
-            WriteToLog("Stopping Chrome");
-            KillProcessAndChildren(_chromeProcess.Id);
-            WriteToLog("Chrome stopped");
+            if (IsChromeRunning)
+            {
+                // Sometimes Chrome does not close all processes so kill them
+                WriteToLog($"Chrome did not close gracefully, closing it by killing it's process on id '{_chromeProcess.Id}'");
+                KillProcessAndChildren(_chromeProcess.Id);
+                WriteToLog("Chrome killed");
 
-            _chromeWaitEvent?.Dispose();
-            _chromeWaitEvent = null;
-            _chromeProcess = null;
+                _chromeProcess = null;
+            }
+
+            _disposed = true;
         }
         #endregion
     }
